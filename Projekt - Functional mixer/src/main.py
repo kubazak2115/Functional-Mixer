@@ -1,7 +1,7 @@
 import tkinter as tk
 from gui import AudioMixerGUI
-from audio_processor import AudioProcessor
-from audio_state import AudioState
+from src.audio_processor import AudioProcessor
+from src.audio_state import AudioState
 from waveform_display import WaveformDisplay
 
 class FunctionalAudioMixer:
