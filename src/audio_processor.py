@@ -169,3 +169,79 @@ class AudioProcessor:
 
     def adjust_crossfader(self, value):
         self._apply_crossfaded_volume()
+
+    def _apply_crossfaded_volume(self):
+        with self.audio_state.state_lock:
+            crossfader_pos = self.audio_state.crossfader_var.get() / 100.0
+            track1_curve = np.cos(crossfader_pos * np.pi / 2)
+            track2_curve = np.sin(crossfader_pos * np.pi / 2)
+            for i in range(2):
+                base_volume = self.audio_state.volume_vars[i].get() / 100.0
+                final_volume = base_volume * (track1_curve if i == 0 else track2_curve)
+                if (self.audio_state['files'][i] and
+                        self.audio_state['playing'][i] and
+                        self.audio_state['channels'][i]):
+                    self.audio_state['channels'][i].set_volume(final_volume)
+
+    def _position_updater_optimized(self):
+        while not self.shutdown_event.is_set():
+            try:
+                current_time = time.time()
+                if current_time - self.last_position_update < self.position_update_throttle:
+                    time.sleep(0.001)
+                    continue
+                self.last_position_update = current_time
+                with self.audio_state.state_lock:
+                    for i in range(2):
+                        if self.audio_state['playing'][i]:
+                            elapsed = current_time - self.audio_state['start_times'][i]
+                            self.audio_state['current_positions'][i] = elapsed
+                            if (elapsed >= self.audio_state['durations'][i] and
+                                    self.audio_state['durations'][i] > 0):
+                                self.update_queue.put(('stop_track', i))
+                time.sleep(0.005)
+            except Exception as e:
+                print(f"Error in position_updater_optimized: {e}")
+                time.sleep(0.1)
+
+    def _process_gui_updates(self):
+        while not self.shutdown_event.is_set():
+            try:
+                updates_processed = 0
+                while not self.update_queue.empty() and updates_processed < 10:
+                    try:
+                        update_type, data = self.update_queue.get_nowait()
+                        self.audio_state.root.after_idle(self.audio_state.gui.update_gui, update_type, data)
+                        updates_processed += 1
+                    except queue.Empty:
+                        break
+                time.sleep(0.016)
+            except Exception as e:
+                print(f"Error in _process_gui_updates: {e}")
+                time.sleep(0.1)
+
+    def _schedule_waveform_updates(self):
+        while not self.shutdown_event.is_set():
+            try:
+                current_time = time.time()
+                if current_time - self.last_gui_update < self.gui_update_throttle:
+                    time.sleep(0.01)
+                    continue
+                self.last_gui_update = current_time
+                needs_update = False
+                with self.audio_state.state_lock:
+                    for i in range(2):
+                        if self.audio_state['playing'][i]:
+                            needs_update = True
+                            break
+                if needs_update:
+                    self.audio_state.root.after_idle(self.audio_state.waveform_display._trigger_waveform_update)
+                time.sleep(0.033)
+            except Exception as e:
+                print(f"Error in _schedule_waveform_updates: {e}")
+                time.sleep(0.1)
+
+    def cleanup(self):
+        self.shutdown_event.set()
+        self.executor.shutdown(wait=True)
+        pygame.mixer.quit()
