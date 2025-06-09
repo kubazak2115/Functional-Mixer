@@ -14,19 +14,20 @@ class FunctionalAudioMixer:
     def __init__(self):
         pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
         pygame.mixer.init()
-        pygame.mixer.set_num_channels(8)
+        pygame.mixer.set_num_channels(8) #konfiguracja silnika pygame
 
-        self.root = tk.Tk()
-        self.root.title("Mikser Audio DJ z Analizą BPM - Optimized")
+        self.root = tk.Tk() #tworzenie okna apki z biblioteki tkinter
+        self.root.title("Mikser Audio")
         self.root.geometry("1200x800")
         self.root.state('zoomed')
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AudioMixer")
-        self.update_queue = queue.Queue(maxsize=100)
-        self.shutdown_event = threading.Event()
-        self.state_lock = RLock()
+        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AudioMixer") #zadania asynchroniczne
+        self.update_queue = queue.Queue(maxsize=100) #aktualizacja gui
+        self.shutdown_event = threading.Event() # zamykanie wątków
+        self.state_lock = RLock() # synchronizacja do wspólnego stanu audio
+        #Rlock - specjalny tryb lock który pozwala wątkowi wejść więcej niż raz do danej sekcji kodu (nie jest blokowany jak w przypadku zwykłego lock)
 
         self.audio_state = AudioState()
         self.audio_state.state_lock = self.state_lock
@@ -40,14 +41,14 @@ class FunctionalAudioMixer:
         self.utils.start_background_threads()
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    def on_closing(self):
+    def on_closing(self): #bezpieczne zamknięcie apki
         try:
-            self.shutdown_event.set()
+            self.shutdown_event.set() #informacja wątków o zamknięciu
             if hasattr(self.waveform_display, 'anim') and self.waveform_display.anim:
-                self.waveform_display.anim.event_source.stop()
+                self.waveform_display.anim.event_source.stop() #zatrzymanie animacji
             self.executor.shutdown(wait=False)
             pygame.mixer.stop()
-            self.root.destroy()
+            self.root.destroy() # zniszczenie gui
         except Exception as e:
             print(f"Error during cleanup: {e}")
 

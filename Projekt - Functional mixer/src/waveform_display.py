@@ -4,7 +4,7 @@ from matplotlib.animation import FuncAnimation
 import tkinter as tk
 from typing import List
 
-class WaveformDisplay:
+class WaveformDisplay: #wyświetlanie ścieżek w oparciu o tkinter i mathplotlib ;0
     def __init__(self, app):
         self.app = app
         self.fig = None
@@ -15,7 +15,7 @@ class WaveformDisplay:
         self.canvas = None
         self.anim = None
 
-    def setup_waveform_display(self, parent):
+    def setup_waveform_display(self, parent): #tworzymy ramke canvas frame i ustawia jej rozmieszczenie
         canvas_frame = tk.Frame(parent)
         canvas_frame.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
         canvas_frame.columnconfigure(0, weight=1)
@@ -32,7 +32,7 @@ class WaveformDisplay:
         self.ax1.set_ylabel("Amplitude")
         self.ax2.set_ylabel("Amplitude")
         self.ax2.set_xlabel("Time (seconds)")
-
+        #konfigurujemy dwa wykresy 
         self.waveform_lines = [
             self.ax1.plot([], [], color='blue', alpha=0.7, linewidth=0.5)[0],
             self.ax2.plot([], [], color='red', alpha=0.7, linewidth=0.5)[0]
@@ -41,23 +41,24 @@ class WaveformDisplay:
             self.ax1.axvline(x=0, color='green', linestyle='--', linewidth=2, alpha=0.8),
             self.ax2.axvline(x=0, color='green', linestyle='--', linewidth=2, alpha=0.8)
         ]
+        #rysujemy linie pozycji odtwarzania
         self.ax1.beat_grid_lines = []
         self.ax2.beat_grid_lines = []
 
         self.canvas = FigureCanvasTkAgg(self.fig, canvas_frame)
         self.canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
-    def setup_animation(self):
+    def setup_animation(self): #wykorzystuje funcAnimation z matplotlib 
         self.anim = FuncAnimation(
             self.fig,
             self.update_waveform,
-            interval=33,
-            blit=False,
+            interval=33,#aktualizacja pozycji odtwarzania
+            blit=True,
             cache_frame_data=False,
             repeat=True
         )
 
-    def update_waveform_static(self, track_index):
+    def update_waveform_static(self, track_index): #rysowanie statycznego wykresu tracka (jak nie jest zapauzowany albo puszczony)
         try:
             with self.app.state_lock:
                 data = self.app.audio_state.state['waveform_cache'][track_index]
@@ -83,7 +84,7 @@ class WaveformDisplay:
         except Exception as e:
             print(f"Error updating waveform: {e}")
 
-    def update_waveform(self, frame):
+    def update_waveform(self, frame): # live-time wskaźnik dla naszych waveformów oraz zmiana jego kolorów z zależności od stanu
         for track_idx in range(2):
             if (self.app.audio_state.state['data'][track_idx] is not None and
                     self.app.audio_state.state['durations'][track_idx] > 0):
@@ -101,5 +102,5 @@ class WaveformDisplay:
                 line.set_color(color)
                 line.set_alpha(0.8)
 
-        self.fig.canvas.draw_idle()
+        self.fig.canvas.draw_idle() #odswieżamy tylko zieloną linie
         return self.position_lines

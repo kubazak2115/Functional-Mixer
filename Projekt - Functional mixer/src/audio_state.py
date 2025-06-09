@@ -3,9 +3,9 @@ from typing import Dict, Any, List
 class AudioState:
     def __init__(self):
         self.state = self._initialize_audio_state()
-        self.state_lock = None  # Will be set by main application
+        self.state_lock = None 
 
-    def _initialize_audio_state(self) -> Dict[str, Any]:
+    def _initialize_audio_state(self) -> Dict[str, Any]: #utworzenie słownika danych ścieżek audio dla apki 
         return {
             'files': [None, None],
             'filenames': [None, None],

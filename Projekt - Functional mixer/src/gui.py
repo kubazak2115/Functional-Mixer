@@ -63,7 +63,7 @@ class GUI:
         control_frame = ttk.LabelFrame(parent, text="Playback Controls", padding="5")
         control_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10))
 
-        button_configs = [
+        button_configs = [ #dane wejściowe do poźniejszych funckji
             ("Play Both", self.play_both, "green"),
             ("Stop Both", self.stop_both, "red"),
             ("Play Track 1", partial(self.play_track, 0), "lightgreen"),
@@ -74,14 +74,14 @@ class GUI:
             ("Stop Track 2", partial(self.stop_track, 1), "lightcoral"),
         ]
 
-        buttons = list(starmap(
+        buttons = list(starmap( #rozpakowuje wszytkie elementy, aplikuje je do funkcji lambda, a lambda tworzy button
             lambda text, command, color: self._create_styled_button(control_frame, text, command, color),
             button_configs
         ))
 
         list(starmap(
-            lambda i, btn: btn.grid(row=i // 4, column=i % 4, padx=5, pady=2, sticky="ew"),
-            enumerate(buttons)
+            lambda i, btn: btn.grid(row=i // 4, column=i % 4, padx=5, pady=2, sticky="ew"), # dla każdego buttona wywołuje funkcje grid i rozmieszcza w gridzie elementy
+            enumerate(buttons) # enumerate tworzy parę - numeruje buttony
         ))
 
         for i in range(4):
