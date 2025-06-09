@@ -5,7 +5,7 @@ import librosa
 import pygame
 
 class AudioProcessor:
-    def init(self):
+    def __init__(self):
         self.processors = self._create_audio_processors()
 
     def _create_audio_processors(self) -> Dict[str, Callable]:
