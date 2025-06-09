@@ -1,37 +1,14 @@
-import pygame
 import numpy as np
+from functools import reduce, partial
+from typing import Callable, Dict, Any
 import librosa
-from functools import partial, reduce
-from tkinter import filedialog
-from typing import List, Tuple, Optional
-from concurrent.futures import ThreadPoolExecutor
-from utils import handle_audio_errors
-import threading
-import time
-import queue
+import pygame
 
 class AudioProcessor:
-    def __init__(self, audio_state):
-        pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
-        pygame.mixer.init()
-        pygame.mixer.set_num_channels(8)
-        self.audio_state = audio_state
-        self.executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AudioMixer")
-        self.update_queue = queue.Queue(maxsize=100)
-        self.shutdown_event = threading.Event()
-        self.audio_processors = self._create_audio_processors()
-        self.position_thread = threading.Thread(target=self._position_updater_optimized, daemon=True, name="PositionUpdater")
-        self.gui_update_thread = threading.Thread(target=self._process_gui_updates, daemon=True, name="GUIUpdater")
-        self.waveform_scheduler = threading.Thread(target=self._schedule_waveform_updates, daemon=True, name="WaveformScheduler")
-        self.position_thread.start()
-        self.gui_update_thread.start()
-        self.waveform_scheduler.start()
-        self.gui_update_throttle = 0.033
-        self.last_gui_update = 0
-        self.position_update_throttle = 0.016
-        self.last_position_update = 0
+    def init(self):
+        self.processors = self._create_audio_processors()
 
-    def _create_audio_processors(self) -> dict:
+    def _create_audio_processors(self) -> Dict[str, Callable]:
         return {
             'normalize': lambda x: x / np.max(np.abs(x)) if np.max(np.abs(x)) > 0 else x,
             'to_float': lambda x: x.astype(np.float32),
@@ -40,208 +17,26 @@ class AudioProcessor:
             'apply_volume': lambda x, vol: x * vol
         }
 
-    @handle_audio_errors
-    def load_file(self, track_index: int):
-        filetypes = (
-            ('Audio files', '*.mp3 *.wav *.ogg *.flac *.m4a'),
-            ('MP3 files', '*.mp3'),
-            ('WAV files', '*.wav'),
-            ('OGG files', '*.ogg'),
-            ('FLAC files', '*.flac'),
-            ('All files', '*.*')
-        )
-        filename = filedialog.askopenfilename(title=f'Select audio file for Track {track_index + 1}',
-                                              filetypes=filetypes)
-        if filename:
-            with self.audio_state.state_lock:
-                self.audio_state['filenames'][track_index] = filename
-                sound = pygame.mixer.Sound(filename)
-                self.audio_state['files'][track_index] = sound
-                self.audio_state['durations'][track_index] = sound.get_length()
-                self.audio_state['bpm_analyzing'][track_index] = True
-            self.update_queue.put(('file_loaded', (track_index, filename)))
-            self.executor.submit(self._process_audio_async, sound, track_index)
-            self.executor.submit(self._analyze_bpm_async, filename, track_index)
+    def process_audio(self, sound, factor=20000):
+        raw_data = pygame.sndarray.array(sound)
+        processing_pipeline = [
+            self.processors['to_float'],
+            self.processors['to_mono'],
+            self.processors['normalize'],
+            partial(self.processors['downsample'], factor=factor)
+        ]
+        return reduce(lambda data, func: func(data), processing_pipeline, raw_data)
 
-    def _process_audio_async(self, sound, track_index):
+    def calculate_bpm_advanced(self, filename: str) -> tuple[any, list, float]:
         try:
-            raw_data = pygame.sndarray.array(sound)
-            processing_pipeline = [
-                self.audio_processors['to_float'],
-                self.audio_processors['to_mono'],
-                self.audio_processors['normalize'],
-                partial(self.audio_processors['downsample'], factor=20000)
-            ]
-            processed_data = reduce(lambda data, func: func(data), processing_pipeline, raw_data)
-            with self.audio_state.state_lock:
-                self.audio_state['data'][track_index] = processed_data
-                self.audio_state['waveform_cache'][track_index] = processed_data
-            self.update_queue.put(('waveform_update', track_index))
+            y, sr = librosa.load(filename, duration=60)
+            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, hop_length=1024)
+            onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=1024)
+            tempo_scalar = float(tempo.item() if hasattr(tempo, 'item') else tempo)
+            confidence = 0.8
+            beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=1024)
+            filtered_beats = list(filter(lambda t: 0.5 <= t, beat_times))
+            return round(tempo_scalar, 1), filtered_beats, round(confidence, 2)
         except Exception as e:
-            print(f"Error processing audio: {e}")
-
-    @handle_audio_errors
-    def calculate_bpm_advanced(self, filename: str) -> Tuple[Optional[float], List[float], float]:
-        y, sr = librosa.load(filename, duration=60)
-        tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr, hop_length=1024)
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=1024)
-        tempo_scalar = float(tempo.item() if hasattr(tempo, 'item') else tempo)
-        confidence = 0.8
-        beat_times = librosa.frames_to_time(beat_frames, sr=sr, hop_length=1024)
-        filtered_beats = list(filter(lambda t: 0.5 <= t, beat_times))
-        return round(tempo_scalar, 1), filtered_beats, round(confidence, 2)
-
-    def _analyze_bpm_async(self, filename, track_index):
-        try:
-            bpm, beats, confidence = self.calculate_bpm_advanced(filename)
-            with self.audio_state.state_lock:
-                self.audio_state['bpm_values'][track_index] = bpm
-                self.audio_state['beat_times'][track_index] = beats
-                self.audio_state['tempo_confidence'][track_index] = confidence
-                self.audio_state['bpm_analyzing'][track_index] = False
-            self.update_queue.put(('bpm_update', (track_index, bpm, confidence)))
-        except Exception as e:
-            print(f"Error analyzing BPM: {e}")
-            with self.audio_state.state_lock:
-                self.audio_state['bpm_analyzing'][track_index] = False
-
-    def play_both(self):
-        valid_tracks = [i for i in range(2) if self.audio_state['files'][i] is not None]
-        for track in valid_tracks:
-            self.play_track(track)
-
-    def stop_both(self):
-        for i in range(2):
-            self.stop_track(i)
-
-    def play_track(self, track_index: int):
-        with self.audio_state.state_lock:
-            if self.audio_state['files'][track_index] and not self.audio_state['playing'][track_index]:
-                sound = self.audio_state['files'][track_index]
-                channel = pygame.mixer.find_channel()
-                if channel:
-                    self.audio_state['channels'][track_index] = channel
-                    if self.audio_state['paused'][track_index]:
-                        channel.play(sound)
-                        self.audio_state['paused'][track_index] = False
-                        self.audio_state['start_times'][track_index] = time.time() - \
-                                                                       self.audio_state['pause_positions'][track_index]
-                    else:
-                        channel.play(sound)
-                        self.audio_state['pause_positions'][track_index] = 0
-                        self.audio_state['start_times'][track_index] = time.time()
-                    self.audio_state['playing'][track_index] = True
-                    self._apply_crossfaded_volume()
-
-    def toggle_pause_track(self, track_index: int):
-        if self.audio_state['playing'][track_index]:
-            self._pause_track(track_index)
-        elif self.audio_state['paused'][track_index]:
-            self.play_track(track_index)
-
-    def _pause_track(self, track_index: int):
-        if self.audio_state['playing'][track_index] and self.audio_state['channels'][track_index]:
-            current_time = time.time()
-            self.audio_state['pause_positions'][track_index] = current_time - self.audio_state['start_times'][
-                track_index]
-            self.audio_state['channels'][track_index].stop()
-            self.audio_state['playing'][track_index] = False
-            self.audio_state['paused'][track_index] = True
-
-    def stop_track(self, track_index: int):
-        if self.audio_state['channels'][track_index]:
-            self.audio_state['channels'][track_index].stop()
-        state_resets = {
-            'playing': False,
-            'paused': False,
-            'pause_positions': 0,
-            'current_positions': 0,
-            'start_times': 0
-        }
-        for key, value in state_resets.items():
-            self.audio_state[key][track_index] = value
-
-    def adjust_individual_volume(self, value, track: int):
-        with self.audio_state.state_lock:
-            volume = float(value) / 100.0
-            self.audio_state['volumes'][track] = volume
-        self._apply_crossfaded_volume()
-
-    def adjust_crossfader(self, value):
-        self._apply_crossfaded_volume()
-
-    def _apply_crossfaded_volume(self):
-        with self.audio_state.state_lock:
-            crossfader_pos = self.audio_state.crossfader_var.get() / 100.0
-            track1_curve = np.cos(crossfader_pos * np.pi / 2)
-            track2_curve = np.sin(crossfader_pos * np.pi / 2)
-            for i in range(2):
-                base_volume = self.audio_state.volume_vars[i].get() / 100.0
-                final_volume = base_volume * (track1_curve if i == 0 else track2_curve)
-                if (self.audio_state['files'][i] and
-                        self.audio_state['playing'][i] and
-                        self.audio_state['channels'][i]):
-                    self.audio_state['channels'][i].set_volume(final_volume)
-
-    def _position_updater_optimized(self):
-        while not self.shutdown_event.is_set():
-            try:
-                current_time = time.time()
-                if current_time - self.last_position_update < self.position_update_throttle:
-                    time.sleep(0.001)
-                    continue
-                self.last_position_update = current_time
-                with self.audio_state.state_lock:
-                    for i in range(2):
-                        if self.audio_state['playing'][i]:
-                            elapsed = current_time - self.audio_state['start_times'][i]
-                            self.audio_state['current_positions'][i] = elapsed
-                            if (elapsed >= self.audio_state['durations'][i] and
-                                    self.audio_state['durations'][i] > 0):
-                                self.update_queue.put(('stop_track', i))
-                time.sleep(0.005)
-            except Exception as e:
-                print(f"Error in position_updater_optimized: {e}")
-                time.sleep(0.1)
-
-    def _process_gui_updates(self):
-        while not self.shutdown_event.is_set():
-            try:
-                updates_processed = 0
-                while not self.update_queue.empty() and updates_processed < 10:
-                    try:
-                        update_type, data = self.update_queue.get_nowait()
-                        self.audio_state.root.after_idle(self.audio_state.gui.update_gui, update_type, data)
-                        updates_processed += 1
-                    except queue.Empty:
-                        break
-                time.sleep(0.016)
-            except Exception as e:
-                print(f"Error in _process_gui_updates: {e}")
-                time.sleep(0.1)
-
-    def _schedule_waveform_updates(self):
-        while not self.shutdown_event.is_set():
-            try:
-                current_time = time.time()
-                if current_time - self.last_gui_update < self.gui_update_throttle:
-                    time.sleep(0.01)
-                    continue
-                self.last_gui_update = current_time
-                needs_update = False
-                with self.audio_state.state_lock:
-                    for i in range(2):
-                        if self.audio_state['playing'][i]:
-                            needs_update = True
-                            break
-                if needs_update:
-                    self.audio_state.root.after_idle(self.audio_state.waveform_display._trigger_waveform_update)
-                time.sleep(0.033)
-            except Exception as e:
-                print(f"Error in _schedule_waveform_updates: {e}")
-                time.sleep(0.1)
-
-    def cleanup(self):
-        self.shutdown_event.set()
-        self.executor.shutdown(wait=True)
-        pygame.mixer.quit()
+            print(f"Error in BPM calculation: {e}")
+            return None, [], 0.0
