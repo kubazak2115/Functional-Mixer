@@ -53,7 +53,7 @@ class WaveformDisplay: #wyświetlanie ścieżek w oparciu o tkinter i mathplotli
             self.fig,
             self.update_waveform,
             interval=33,#aktualizacja pozycji odtwarzania
-            blit=True,
+            blit=False,
             cache_frame_data=False,
             repeat=True
         )
