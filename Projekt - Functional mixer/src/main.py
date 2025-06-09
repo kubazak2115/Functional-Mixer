@@ -17,7 +17,7 @@ class FunctionalAudioMixer:
         pygame.mixer.set_num_channels(8)
 
         self.root = tk.Tk()
-        self.root.title("Mikser Audio DJ z Analizą BPM")
+        self.root.title("Mikser Audio DJ z Analizą BPM - Optimized")
         self.root.geometry("1200x800")
         self.root.state('zoomed')
         self.root.grid_rowconfigure(0, weight=1)
