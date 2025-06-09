@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 
 class AudioState:
-    def init(self):
+    def __init__(self):
         self.state = self._initialize_audio_state()
         self.state_lock = None  # Will be set by main application
 
