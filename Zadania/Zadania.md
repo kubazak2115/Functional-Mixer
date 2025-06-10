@@ -1,6 +1,6 @@
 
-2
-Zadanie 1: Łączenie i filtrowanie wielu źródeł danych 
+
+# Zadanie 1: Łączenie i filtrowanie wielu źródeł danych 
 Masz dwie listy: jedna zawiera imiona użytkowników, druga ich wyniki: 
  
 users = ["Ala", "Ola", "Jan", "Ela", "Kot"] 
@@ -14,7 +14,7 @@ Oczekiwany wynik:
 ['JAN', 'ALA', 'ELA'] 
  
  
-Zadanie 2: Oceny uczniów i klasyfikacja 
+# Zadanie 2: Oceny uczniów i klasyfikacja 
  
 Masz dwie listy: 
 students = ["Ania", "Bartek", "Celina", "Darek", "Ewa"] 
@@ -33,7 +33,7 @@ Oczekiwany wynik:
     "EWA - ZDAŁ(A) z oceną 3.5" 
 ] 
  
-Zadanie 3: Transformacja macierzy (funkcyjnie) 
+# Zadanie 3: Transformacja macierzy (funkcyjnie) 
 Dla danej macierzy (listy list): 
  
 matrix = [ 
@@ -49,7 +49,7 @@ Oczekiwany wynik:
 [66, 93, 126]  # (1^2 + 4^2 + 7^2), (2^2 + 5^2 + 8^2), (3^2 + 6^2 + 9^2) 
  
  
-Zadanie 4: Potok funkcji (pipeline) 
+# Zadanie 4: Potok funkcji (pipeline) 
  
 Zdefiniuj funkcję wyższego rzędu pipeline, która: 
 • Przyjmuje listę funkcji jednoargumentowych, 
@@ -65,7 +65,7 @@ Dla x = 4 powinno to dać:
  
  
  
-Zadanie 5: Przekształcenia tekstowe (czysto funkcyjne) 
+# Zadanie 5: Przekształcenia tekstowe (czysto funkcyjne) 
  
 Dla danego tekstu: 
 text = "omg JPWP jest super" 
